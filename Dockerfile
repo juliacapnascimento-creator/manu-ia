@@ -12,8 +12,8 @@ COPY vite.config.js ./
 COPY public ./public
 RUN npm run build
 
-FROM php:8.3-fpm-alpine
-RUN apk add --no-cache nginx supervisor bash icu-libs libzip \
+FROM php:8.4-fpm-alpine
+RUN apk add --no-cache nginx supervisor bash icu-libs libzip libpq \
     && apk add --no-cache --virtual .build-deps $PHPIZE_DEPS icu-dev libzip-dev postgresql-dev \
     && docker-php-ext-install pdo_mysql pdo_pgsql intl zip opcache \
     && apk del .build-deps

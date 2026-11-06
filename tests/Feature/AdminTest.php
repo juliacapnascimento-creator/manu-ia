@@ -67,6 +67,21 @@ class AdminTest extends TestCase
         ]);
     }
 
+    public function test_demo_seeder_preserves_catalog_changes_when_it_runs_again(): void
+    {
+        $this->seed();
+        $product = Product::query()->where('slug', 'boto-cinza')->firstOrFail();
+        $product->update(['price' => 45.00, 'is_demo' => false]);
+
+        $this->seed();
+
+        $this->assertDatabaseHas('products', [
+            'id' => $product->id,
+            'price' => 45.00,
+            'is_demo' => false,
+        ]);
+    }
+
     public function test_admin_can_update_quote_status_without_sending_a_message(): void
     {
         $this->actingAs(User::factory()->create());

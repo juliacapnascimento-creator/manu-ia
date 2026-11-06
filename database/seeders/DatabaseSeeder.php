@@ -30,7 +30,7 @@ class DatabaseSeeder extends Seeder
         ];
 
         foreach ($products as $product) {
-            Product::query()->updateOrCreate(
+            Product::query()->firstOrCreate(
                 ['slug' => $product['slug']],
                 [...$product, 'is_demo' => true, 'is_active' => true],
             );

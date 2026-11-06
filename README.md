@@ -55,6 +55,12 @@ Pré-requisitos instalados neste Mac: PHP 8.4, Composer 2.11, Node.js e MySQL 8.
 
 5. Para criar o primeiro acesso ao painel, execute `php artisan admin:create-user` e siga as perguntas no terminal. Depois, abra `/admin/login` no navegador. O cadastro de usuários é intencionalmente feito no terminal, sem uma tela pública de registro.
 
+## Hospedagem temporária no Render
+
+O arquivo `render.yaml` prepara a aplicação Docker e um banco PostgreSQL nos planos grátis, na mesma região. Para publicar, entre no Render, crie um Blueprint apontando para este repositório e confirme os dois serviços. O Render gera `APP_KEY`; a aplicação converte o valor gerado para o formato esperado pelo Laravel. Na primeira inicialização, o contêiner executa as migrações e carrega o catálogo demonstrativo sem substituir produtos já editados pelo painel. A variável `OPENAI_API_KEY` é opcional; sem ela, o agente funciona no modo de demonstração.
+
+Esse plano serve para apresentação e teste, não para produção: o site pode adormecer após 15 minutos sem acesso e o banco grátis expira após 30 dias. O banco contém as conversas e simulações dessa instalação. Faça uma implantação paga e configure backups antes de usar dados importantes ou depender do serviço por mais tempo. Não informe dados pessoais reais no protótipo.
+
 ## Arquitetura deste primeiro fluxo
 
 O navegador envia a mensagem para `POST /api/chat`. O controller valida o canal e o tamanho, salva as mensagens e a preferência de consentimento no Laravel, e chama `ChatAssistant`. O serviço lê os produtos ativos do banco e fornece esse catálogo como contexto para a API. O histórico é carregado em `GET /api/chat/{conversation}`; `DELETE` apaga a conversa demonstrativa. O identificador aleatório fica no `localStorage` do navegador e é compartilhado ao trocar de canal.

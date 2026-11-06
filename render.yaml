@@ -1,0 +1,47 @@
+services:
+  - type: web
+    name: manu-ia-julia-nascimento
+    runtime: docker
+    plan: free
+    region: ohio
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /up
+    envVars:
+      - key: APP_NAME
+        value: Manu IA
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        generateValue: true
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: DB_CONNECTION
+        value: pgsql
+      - key: DATABASE_URL
+        fromDatabase:
+          name: manu-ia-database
+          property: connectionString
+      - key: SESSION_DRIVER
+        value: database
+      - key: CACHE_STORE
+        value: database
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: APP_LOCALE
+        value: pt_BR
+      - key: APP_FALLBACK_LOCALE
+        value: pt_BR
+      - key: APP_FAKER_LOCALE
+        value: pt_BR
+      - key: OPENAI_MODEL
+        value: gpt-6-luna
+
+databases:
+  - name: manu-ia-database
+    databaseName: manu_ia
+    user: manu_ia
+    plan: free
+    region: ohio

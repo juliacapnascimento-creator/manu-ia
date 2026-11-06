@@ -6,6 +6,11 @@ if [ -z "${APP_KEY:-}" ]; then
     exit 1
 fi
 
+if [ -n "${RENDER_EXTERNAL_URL:-}" ] && [ "${APP_KEY#base64:}" = "$APP_KEY" ]; then
+    APP_KEY="base64:$APP_KEY"
+    export APP_KEY
+fi
+
 if [ -n "${DATABASE_URL:-}" ] || [ -n "${DB_HOST:-}" ]; then
     php artisan migrate --force
     php artisan db:seed --force
