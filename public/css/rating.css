@@ -1,0 +1,89 @@
+.rating-section {
+    padding: clamp(3.5rem, 8vw, 7rem) 1.25rem;
+    background: #f3f0e6;
+}
+
+.rating-card {
+    width: min(100%, 42rem);
+    margin: 0 auto;
+    padding: clamp(1.75rem, 5vw, 3.5rem);
+    border: 1px solid #ded6c4;
+    border-radius: 1.25rem;
+    background: #fffdf8;
+    text-align: center;
+}
+
+.rating-card h2 {
+    margin: .75rem 0;
+    color: #283d33;
+    font-family: Georgia, serif;
+    font-size: clamp(1.8rem, 4vw, 2.6rem);
+    font-weight: 400;
+}
+
+.rating-card > p {
+    color: #6b7167;
+}
+
+.rating-fieldset {
+    margin: 1.5rem 0 1rem;
+    padding: 0;
+    border: 0;
+}
+
+.rating-fieldset legend {
+    width: 100%;
+    margin-bottom: .5rem;
+    color: #6b7167;
+    font-size: .9rem;
+}
+
+.rating-stars {
+    display: flex;
+    justify-content: center;
+    gap: .25rem;
+}
+
+.rating-stars button {
+    padding: .1rem .25rem;
+    border: 0;
+    background: transparent;
+    color: #d6d0c2;
+    cursor: pointer;
+    font-size: clamp(2.3rem, 8vw, 3.4rem);
+    line-height: 1;
+    transition: color .15s ease, transform .15s ease;
+}
+
+.rating-stars button:hover,
+.rating-stars button:focus-visible {
+    transform: translateY(-2px);
+    color: #c89038;
+}
+
+.rating-stars button.selected {
+    color: #c89038;
+}
+
+.rating-submit {
+    padding: .85rem 1.4rem;
+    border: 0;
+    border-radius: .65rem;
+    background: #c83220;
+    color: #fffdf8;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 700;
+}
+
+.rating-result {
+    margin: 1rem 0 0;
+    color: #34483b;
+    font-weight: 600;
+}
+
+.rating-card > small {
+    display: block;
+    margin-top: 1.25rem;
+    color: #817b6d;
+}
