@@ -7,6 +7,7 @@
     <title>@yield('title', 'Painel') · Manu IA</title>
     <link rel="stylesheet" href="{{ asset('css/admin.css') }}">
     <link rel="stylesheet" href="{{ asset('css/admin-crm.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/admin-dashboard.css') }}">
 </head>
 <body class="admin-body">
     <header class="admin-topbar">

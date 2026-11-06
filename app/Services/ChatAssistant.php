@@ -10,15 +10,20 @@ use RuntimeException;
 
 class ChatAssistant
 {
-    /** @param  array<int, array{role: string, content: string}>  $history */
+    /**
+     * @param  array<int, array{role: string, content: string}>  $history
+     * @return array{content: string, mode: string, action: array{type: string, product_id: int|null, purpose: string|null, interests: array<int, string>}|array{type: string, product_id: int|null, purpose: string|null}|null}
+     */
     public function reply(array $history, string $channel = 'site'): array
     {
+        $action = $this->suggestedAction($history);
         $apiKey = config('services.openai.key');
 
         if (! is_string($apiKey) || $apiKey === '') {
             return [
                 'content' => $this->demoReply($history, $channel),
                 'mode' => 'demo',
+                'action' => $action,
             ];
         }
 
@@ -48,13 +53,14 @@ class ChatAssistant
             'Converse em português brasileiro, com gentileza e naturalidade. Varie as respostas e não repita a mesma frase padrão.',
             'Leve em conta o histórico inteiro: responda a pergunta atual, entenda referências como “ela”, “esse” e “quanto?” pela conversa anterior e não recomece a conversa a cada mensagem.',
             'Se a pessoa responder “sim” a uma pergunta que ofereceu duas opções, peça que ela escolha uma delas em uma frase curta, considerando o assunto já mencionado.',
+            'Conduza o atendimento como um agente demonstrativo: entenda se a pessoa quer presentear, colecionar ou decorar, recomende peças do catálogo que combinem, tire dúvidas e oriente para o simulador quando houver interesse em orçamento. Faça uma pergunta por vez e não pressione por uma compra.',
             $channelGuidance,
             'Use exclusivamente o catálogo abaixo para afirmar nomes, características, preços e disponibilidade. Nunca invente preços, produtos, prazos, políticas, promoções ou possibilidades de personalização.',
             'needs_confirmation=true significa que os dados vieram de uma captura fornecida e ainda precisam de confirmação de preço e disponibilidade pela equipe. Não diga que esses dados são fictícios nem que foram revisados.',
             'Quando a informação não estiver no catálogo, diga claramente que precisa ser consultada com a equipe da ManuPekena.',
             'Ajude a avançar a conversa com uma pergunta curta e específica, sem empilhar perguntas. Se fizer sentido, indique o simulador de orçamento do site.',
             'Não confirme pedidos, pagamentos, compras, disponibilidade final nem mensagens em canais reais. Este site é um protótipo.',
-            'Não solicite dados pessoais ou sensíveis. Se a pessoa compartilhar algum, não o repita na resposta.',
+            'Não solicite dados pessoais ou sensíveis. Se a pessoa compartilhar algum, não o repita na resposta. A preferência por novidades é apenas demonstrativa: não solicite contato e não prometa nem envie campanhas.',
             'Catálogo: '.json_encode($catalog, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
         ]);
 
@@ -88,7 +94,79 @@ class ChatAssistant
             throw new RuntimeException('A resposta da API veio vazia. Tente novamente.');
         }
 
-        return ['content' => $answer, 'mode' => 'openai'];
+        return ['content' => $answer, 'mode' => 'openai', 'action' => $action];
+    }
+
+    /**
+     * @param  array<int, array{role: string, content: string}>  $history
+     * @return array{type: string, product_id: int|null, purpose: string|null, interests: array<int, string>}|array{type: string, product_id: int|null, purpose: string|null}|null
+     */
+    private function suggestedAction(array $history): ?array
+    {
+        $latestMessage = collect($history)->reverse()->firstWhere('role', 'user')['content'] ?? '';
+        $normalizedMessage = $this->normalize($latestMessage);
+
+        if (preg_match('/\b(novidades|novidade|recompra|lancamentos|lancamento)\b/u', $normalizedMessage) === 1) {
+            $interests = [];
+
+            if (preg_match('/\b(novas pecas|pecas novas|novidades|lancamentos)\b/u', $normalizedMessage) === 1) {
+                $interests[] = 'new_releases';
+            }
+
+            if (preg_match('/\b(presente|presentear)\w*/u', $normalizedMessage) === 1) {
+                $interests[] = 'gift_ideas';
+            }
+
+            if (preg_match('/\b(fauna|especies|curiosidades)\b/u', $normalizedMessage) === 1) {
+                $interests[] = 'fauna_stories';
+            }
+
+            return [
+                'type' => 'retention',
+                'product_id' => null,
+                'purpose' => null,
+                'interests' => $interests,
+            ];
+        }
+
+        if (preg_match('/\b(orcamento|simular|simulacao|quantidade|comprar|compra|pedido|pedir|pagamento|finalizar)\b/u', $normalizedMessage) !== 1) {
+            return null;
+        }
+
+        $products = Product::query()
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'species', 'slug']);
+        $product = $this->findProduct($products, $latestMessage)
+            ?? $this->findProductInPriorUserMessages($products, $history, $latestMessage)
+            ?? $this->findProductInLastAssistantMessage($products, $history);
+        $purpose = match (true) {
+            preg_match('/\b(presentear|presente|presentes)\b/u', $normalizedMessage) === 1 => 'presentear',
+            preg_match('/\b(colecionar|colecao|colecoes)\b/u', $normalizedMessage) === 1 => 'colecionar',
+            preg_match('/\b(decorar|decoracao|decor)\b/u', $normalizedMessage) === 1 => 'decorar',
+            default => null,
+        };
+
+        return [
+            'type' => 'quote',
+            'product_id' => $product?->id,
+            'purpose' => $purpose,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, Product>  $products
+     * @param  array<int, array{role: string, content: string}>  $history
+     */
+    private function findProductInLastAssistantMessage(Collection $products, array $history): ?Product
+    {
+        $lastAssistantMessage = collect($history)
+            ->reverse()
+            ->firstWhere('role', 'assistant')['content'] ?? '';
+        $matches = $products
+            ->filter(fn (Product $product): bool => $this->productMatchesMessage($product, $lastAssistantMessage));
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     /** @param  array<int, array{role: string, content: string}>  $history */
@@ -105,8 +183,9 @@ class ChatAssistant
         $questionAboutAvailability = preg_match('/\b(disponivel|tem|estoque|pronta|pronta entrega)\w*/u', $normalizedMessage) === 1;
         $questionAboutPurchase = preg_match('/\b(comprar|compra|pedido|pedir|pagamento|pagar|finalizar)\w*/u', $normalizedMessage) === 1;
         $questionAboutBudget = preg_match('/\b(orcamento|simular|simulacao|quantidade|unidades)\w*/u', $normalizedMessage) === 1;
+        $questionAboutRetention = preg_match('/\b(novidades|novidade|recompra|lancamentos|lancamento)\b/u', $normalizedMessage) === 1;
         $questionAboutCatalog = preg_match('/\b(quais|mostra|mostrar|catalogo|pecas|produtos|opcoes|colecao|animais)\w*/u', $normalizedMessage) === 1;
-        $questionAboutRecommendation = preg_match('/\b(indica|recomend|sugere|presente|decorar|colecion)\w*/u', $normalizedMessage) === 1;
+        $questionAboutRecommendation = preg_match('/\b(ajud|escolh|indica|recomend|sugere|presente|decorar|colecion)\w*/u', $normalizedMessage) === 1;
         $isGreeting = preg_match('/^(oi|ola|bom dia|boa tarde|boa noite|tudo bem)\b/u', trim($normalizedMessage)) === 1;
         $isAffirmative = preg_match('/^(sim|s|claro|quero|pode|pode ser|isso|vamos|bora|com certeza)$/u', trim(preg_replace('/[^\pL\pN ]/u', '', $normalizedMessage))) === 1;
 
@@ -126,6 +205,10 @@ class ChatAssistant
 
         if ($isAffirmative) {
             return $this->affirmativeReply($matchedProduct, $history, $channel);
+        }
+
+        if ($questionAboutRetention) {
+            return 'Podemos demonstrar uma ideia de recompra sem entrar em contato com ninguém. Selecione “Simular interesse em receber novidades” e escolha os temas abaixo; essa preferência fica só neste protótipo.';
         }
 
         if ($matchedProduct && $questionAboutPrice) {
@@ -316,6 +399,15 @@ class ChatAssistant
 
     private function recommendationReply(Collection $products, string $message, string $channel, array $history): string
     {
+        $hasRecommendationContext = preg_match('/\b(present|colecion|decor|mar|praia|agua|oceano|aquatic|crian|infantil|casa|mesa|estante)\w*/u', $message) === 1;
+
+        if (! $hasRecommendationContext) {
+            return $this->fresh([
+                'Claro! Para te indicar algo que combine, você está procurando uma peça para presentear, colecionar ou decorar?',
+                'Posso te ajudar a escolher. Você está pensando em presentear alguém, colecionar ou decorar um espaço?',
+            ], $history);
+        }
+
         $recommendation = $products->first();
 
         if (preg_match('/\b(presente|presentear|crian|infantil)\w*/u', $message) === 1) {
@@ -359,26 +451,30 @@ class ChatAssistant
     {
         $normalizedMessage = $this->normalize($message);
 
-        return $products->first(function (Product $product) use ($normalizedMessage): bool {
-            $terms = [$product->name, $product->species, $product->slug];
+        return $products->first(fn (Product $product): bool => $this->productMatchesMessage($product, $normalizedMessage));
+    }
 
-            foreach ([$product->name, $product->species, $product->slug] as $term) {
-                if ($term) {
-                    $normalizedTerm = $this->normalize($term);
-                    $terms = [...$terms, ...preg_split('/[\s-]+/u', $normalizedTerm)];
-                }
-            }
+    private function productMatchesMessage(Product $product, string $message): bool
+    {
+        $normalizedMessage = $this->normalize($message);
+        $terms = [$product->name, $product->species, $product->slug];
 
-            foreach (array_unique(array_filter($terms)) as $term) {
+        foreach ([$product->name, $product->species, $product->slug] as $term) {
+            if ($term) {
                 $normalizedTerm = $this->normalize($term);
-
-                if (mb_strlen($normalizedTerm) >= 4 && preg_match('/(?<![\pL\pN])'.preg_quote($normalizedTerm, '/').'(?=$|[^\pL\pN])/u', $normalizedMessage) === 1) {
-                    return true;
-                }
+                $terms = [...$terms, ...preg_split('/[\s-]+/u', $normalizedTerm)];
             }
+        }
 
-            return false;
-        });
+        foreach (array_unique(array_filter($terms)) as $term) {
+            $normalizedTerm = $this->normalize($term);
+
+            if (mb_strlen($normalizedTerm) >= 4 && preg_match('/(?<![\pL\pN])'.preg_quote($normalizedTerm, '/').'(?=$|[^\pL\pN])/u', $normalizedMessage) === 1) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function findProductInPriorUserMessages(Collection $products, array $history, string $latestMessage): ?Product

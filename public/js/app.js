@@ -5,72 +5,38 @@
     const input = document.querySelector('#chat-input');
     const sendButton = document.querySelector('#send-button');
     const consent = document.querySelector('#marketing-consent');
+    const marketingInterestOptions = document.querySelector('#marketing-interest-options');
+    const marketingInterestInputs = [...document.querySelectorAll('[data-marketing-interest]')];
+    const channelTabs = [...document.querySelectorAll('.channel-tab')];
+    const chatCard = document.querySelector('.chat-card');
+    const channelCaption = document.querySelector('#channel-caption');
+    const channelLabels = {
+        site: { caption: 'Agente demonstrativo · conversa simulada', label: 'SITE' },
+        whatsapp: { caption: 'WhatsApp · conversa simulada', label: 'WHATSAPP SIMULADO' },
+        instagram: { caption: 'Instagram · conversa simulada', label: 'INSTAGRAM SIMULADO' },
+    };
     const modeLabel = document.querySelector('#mode-label');
     const modeLight = document.querySelector('.mode-light');
-    const channelCaption = document.querySelector('#channel-caption');
-    const chatCard = document.querySelector('.chat-card');
-    const channelAgentName = document.querySelector('#channel-agent-name');
-    const channelAgentStatus = document.querySelector('#channel-agent-status span');
     const quoteForm = document.querySelector('#quote-form');
+    const quoteProduct = quoteForm.querySelector('[name="product_id"]');
+    const quoteQuantity = quoteForm.querySelector('[name="quantity"]');
+    const quotePurpose = quoteForm.querySelector('[name="purpose"]');
     const customizationToggle = document.querySelector('#quote-customization');
     const customizationField = document.querySelector('#customization-field');
     const customizationNote = document.querySelector('#customization-note');
-    const channelLabels = {
-        site: 'Simulação de atendimento pelo site',
-        whatsapp: 'Simulação de conversa pelo WhatsApp',
-        instagram: 'Simulação de conversa pelo Direct do Instagram',
-    };
-    const channelDetails = {
-        site: {
-            caption: 'Atendimento demonstrativo pelo site · histórico compartilhado',
-            name: 'Manu',
-            status: 'por aqui agora',
-            placeholder: 'Escreva sua mensagem...',
-        },
-        whatsapp: {
-            caption: 'Simulação do WhatsApp · nenhuma mensagem é enviada',
-            name: 'ManuPekena',
-            status: 'WhatsApp demonstrativo',
-            placeholder: 'Mensagem simulada no WhatsApp...',
-        },
-        instagram: {
-            caption: 'Simulação do Direct · nenhuma mensagem é enviada',
-            name: 'ManuPekena',
-            status: 'Direct demonstrativo',
-            placeholder: 'Mensagem simulada no Direct...',
-        },
-    };
     const token = document.querySelector('meta[name="csrf-token"]').content;
     const conversationKey = 'manu-ia-conversation-v2';
-    const channelKey = 'manu-ia-channel-v2';
     let conversationId = localStorage.getItem(conversationKey) || crypto.randomUUID();
-    let activeChannel = localStorage.getItem(channelKey) || 'site';
+    let activeChannel = 'site';
     let waiting = false;
 
     localStorage.setItem(conversationKey, conversationId);
-
-    const updateChannel = (channel) => {
-        activeChannel = channel;
-        localStorage.setItem(channelKey, channel);
-        const details = channelDetails[channel];
-        chatCard.dataset.channel = channel;
-        channelCaption.textContent = details.caption;
-        channelAgentName.textContent = details.name;
-        channelAgentStatus.textContent = details.status;
-        input.placeholder = details.placeholder;
-
-        document.querySelectorAll('.channel-tab').forEach((tab) => {
-            const selected = tab.dataset.channel === channel;
-            tab.classList.toggle('active', selected);
-            tab.setAttribute('aria-selected', selected ? 'true' : 'false');
-        });
-    };
 
     const scrollToLatest = () => {
         messages.scrollTop = messages.scrollHeight;
     };
 
-    const addMessage = (role, content, channel = activeChannel) => {
+    const addMessage = (role, content, action = null, channel = activeChannel) => {
         const row = document.createElement('div');
         row.className = `message-row ${role === 'user' ? 'user-row' : 'assistant-row'}`;
 
@@ -84,11 +50,41 @@
         const contentGroup = document.createElement('div');
         const channelName = document.createElement('div');
         channelName.className = `message-channel ${role === 'user' ? 'user-channel' : ''}`;
-        channelName.textContent = channelLabels[channel].replace('Simulação de ', '');
+        channelName.textContent = role === 'user' ? 'VOCÊ' : `MANU · ${channelLabels[channel]?.label || 'AGENTE'}`;
         const bubble = document.createElement('div');
         bubble.className = `message-bubble ${role === 'user' ? 'user-bubble' : 'assistant-bubble'}`;
         bubble.textContent = content;
         contentGroup.append(channelName, bubble);
+
+        if (role === 'assistant' && (action?.type === 'quote' || action?.type === 'retention')) {
+            const actionButton = document.createElement('button');
+            actionButton.type = 'button';
+            actionButton.className = 'assistant-next-step';
+            actionButton.textContent = action.type === 'retention'
+                ? 'Simular interesse em novidades'
+                : action.product_id ? 'Montar simulação desta peça' : 'Abrir simulador de orçamento';
+            actionButton.addEventListener('click', () => {
+                if (action.type === 'retention') {
+                    consent.checked = true;
+                    updateMarketingInterestOptions(action.interests || []);
+                    consent.focus();
+                    return;
+                }
+
+                if (action.product_id) {
+                    quoteProduct.value = String(action.product_id);
+                }
+
+                if (action.purpose) {
+                    quotePurpose.value = action.purpose;
+                }
+
+                document.querySelector('#orcamento').scrollIntoView({ behavior: 'smooth' });
+                (action.product_id ? quoteQuantity : quoteProduct).focus();
+            });
+            contentGroup.append(actionButton);
+        }
+
         row.append(contentGroup);
         messages.append(row);
         scrollToLatest();
@@ -122,9 +118,38 @@
         }
     };
 
-    const loadHistory = async () => {
-        updateChannel(activeChannel);
+    const updateMarketingInterestOptions = (selectedInterests = null) => {
+        marketingInterestOptions.hidden = !consent.checked;
 
+        if (selectedInterests !== null) {
+            marketingInterestInputs.forEach((interest) => {
+                interest.checked = selectedInterests.includes(interest.value);
+            });
+        } else if (!consent.checked) {
+            marketingInterestInputs.forEach((interest) => {
+                interest.checked = false;
+            });
+        }
+    };
+
+    consent.addEventListener('change', () => updateMarketingInterestOptions());
+
+    const updateChannel = (channel) => {
+        activeChannel = channelLabels[channel] ? channel : 'site';
+        chatCard.dataset.channel = activeChannel;
+        channelCaption.textContent = channelLabels[activeChannel].caption;
+        channelTabs.forEach((tab) => {
+            const isActive = tab.dataset.channel === activeChannel;
+            tab.classList.toggle('active', isActive);
+            tab.setAttribute('aria-selected', String(isActive));
+        });
+    };
+
+    channelTabs.forEach((tab) => {
+        tab.addEventListener('click', () => updateChannel(tab.dataset.channel));
+    });
+
+    const loadHistory = async () => {
         try {
             const response = await fetch(`${root.dataset.chatHistoryUrl}/${encodeURIComponent(conversationId)}`, {
                 headers: { Accept: 'application/json' },
@@ -135,17 +160,14 @@
             const data = await response.json();
             if (data.messages?.length) {
                 messages.querySelectorAll('.message-row, .quick-prompts').forEach((item) => item.remove());
-                data.messages.forEach((message) => addMessage(message.role, message.content, message.channel));
+                data.messages.forEach((message) => addMessage(message.role, message.content, null, message.channel));
                 consent.checked = Boolean(data.marketing_consent);
+                updateMarketingInterestOptions(data.marketing_interests || []);
             }
         } catch {
             showError('Não foi possível carregar o histórico agora. Você ainda pode começar uma conversa.');
         }
     };
-
-    document.querySelectorAll('.channel-tab').forEach((tab) => {
-        tab.addEventListener('click', () => updateChannel(tab.dataset.channel));
-    });
 
     document.querySelector('#quick-prompts')?.addEventListener('click', (event) => {
         const button = event.target.closest('[data-prompt]');
@@ -163,7 +185,7 @@
 
         messages.querySelector('.chat-error')?.remove();
         messages.querySelector('#quick-prompts')?.remove();
-        addMessage('user', message);
+        addMessage('user', message, null, activeChannel);
         input.value = '';
         setWaiting(true);
 
@@ -180,6 +202,9 @@
                     channel: activeChannel,
                     message,
                     marketing_consent: consent.checked,
+                    marketing_interests: consent.checked
+                        ? marketingInterestInputs.filter((interest) => interest.checked).map((interest) => interest.value)
+                        : [],
                 }),
             });
             const data = await response.json();
@@ -188,9 +213,11 @@
                 throw new Error(data.message || data.errors?.message?.[0] || 'Não consegui enviar sua mensagem. Tente de novo.');
             }
 
-            addMessage('assistant', data.message);
+            addMessage('assistant', data.message, data.action, activeChannel);
             modeLabel.textContent = data.mode === 'openai' ? 'IA conectada' : 'Modo demonstração';
             modeLight.classList.toggle('mode-live', data.mode === 'openai');
+            consent.checked = Boolean(data.marketing_consent);
+            updateMarketingInterestOptions(data.marketing_interests || []);
         } catch (error) {
             showError(error.message || 'O chat está indisponível no momento. Tente novamente.');
         } finally {
@@ -279,35 +306,48 @@
         conversationId = crypto.randomUUID();
         localStorage.setItem(conversationKey, conversationId);
         consent.checked = false;
+        updateMarketingInterestOptions([]);
         messages.querySelectorAll('.message-row, .quick-prompts, .chat-error').forEach((item) => item.remove());
         const greeting = document.createElement('div');
         greeting.className = 'message-row assistant-row';
-        greeting.innerHTML = '<span class="message-avatar">m</span><div class="message-bubble assistant-bubble">Oi, que bom ter você por aqui! 🌿<br>O que você gostaria de conhecer?</div>';
+        const avatar = document.createElement('span');
+        avatar.className = 'message-avatar';
+        avatar.textContent = 'm';
+        const contentGroup = document.createElement('div');
+        const label = document.createElement('div');
+        label.className = 'message-channel';
+        label.textContent = `MANU · ${channelLabels[activeChannel].label}`;
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble assistant-bubble';
+        bubble.textContent = 'Oi, que bom ter você por aqui! 🌿 O que você gostaria de conhecer?';
+        contentGroup.append(label, bubble);
+        greeting.append(avatar, contentGroup);
         messages.append(greeting);
         input.focus();
     });
 
-    const ratingForm = document.querySelector('#rating-form');
+    const ratingButtons = [...document.querySelectorAll('[data-rating]')];
     const ratingResult = document.querySelector('#rating-result');
     let selectedRating = 0;
 
-    ratingForm.querySelectorAll('[data-rating]').forEach((button) => {
+    ratingButtons.forEach((button) => {
         button.addEventListener('click', () => {
             selectedRating = Number(button.dataset.rating);
-            ratingForm.querySelectorAll('[data-rating]').forEach((star) => {
-                const selected = Number(star.dataset.rating) <= selectedRating;
-                star.classList.toggle('selected', selected);
-                star.setAttribute('aria-pressed', Number(star.dataset.rating) === selectedRating ? 'true' : 'false');
+            ratingButtons.forEach((star) => {
+                const isSelected = Number(star.dataset.rating) <= selectedRating;
+                star.classList.toggle('selected', isSelected);
+                star.setAttribute('aria-pressed', String(Number(star.dataset.rating) === selectedRating));
             });
-            ratingResult.hidden = true;
         });
     });
 
-    ratingForm.addEventListener('submit', (event) => {
+    document.querySelector('#rating-form').addEventListener('submit', (event) => {
         event.preventDefault();
-        ratingResult.textContent = selectedRating
-            ? `Obrigado por avaliar esta demonstração com ${selectedRating} ${selectedRating === 1 ? 'estrela' : 'estrelas'}! Sua resposta não foi salva.`
-            : 'Escolha uma estrela para mostrar a avaliação.';
+        if (!selectedRating) {
+            ratingResult.textContent = 'Escolha uma nota para ver a avaliação demonstrativa.';
+        } else {
+            ratingResult.textContent = `Você escolheu ${selectedRating} ${selectedRating === 1 ? 'estrela' : 'estrelas'}. Obrigada por testar o protótipo!`;
+        }
         ratingResult.hidden = false;
     });
 

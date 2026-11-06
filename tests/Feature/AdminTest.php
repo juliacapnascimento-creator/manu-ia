@@ -87,20 +87,59 @@ class AdminTest extends TestCase
         $this->actingAs(User::factory()->create());
         Quote::factory()->create(['status' => 'pending']);
         Quote::factory()->create(['status' => 'converted']);
+        Conversation::factory()->create([
+            'marketing_consent' => true,
+            'marketing_interests' => ['gift_ideas'],
+        ]);
 
         $this->get('/admin')
             ->assertOk()
             ->assertSee('Orçamentos enviados')
             ->assertSee('Total de simulações recebidas')
             ->assertSee('2')
-            ->assertSee('Conversões registradas')
-            ->assertSee('compras ainda não são registradas');
+            ->assertSee('Orçamentos marcados como convertidos')
+            ->assertSee('1 com temas de interesse')
+            ->assertSee('compras reais ainda não são registradas');
+    }
+
+    public function test_dashboard_shows_monthly_activity_and_most_simulated_products(): void
+    {
+        $this->actingAs(User::factory()->create());
+        $popularProduct = Product::factory()->create(['name' => 'Boto-cinza']);
+        $otherProduct = Product::factory()->create(['name' => 'Tatu-galinha']);
+        $thisMonth = now()->startOfMonth()->addDays(2);
+        $lastMonth = now()->startOfMonth()->subMonth()->addDays(2);
+        $thisMonthConversation = Conversation::factory()->create(['created_at' => $thisMonth]);
+        $lastMonthConversation = Conversation::factory()->create(['created_at' => $lastMonth]);
+
+        Quote::factory()->count(2)->create([
+            'product_id' => $popularProduct->id,
+            'conversation_id' => $thisMonthConversation->id,
+            'created_at' => $thisMonth,
+        ]);
+        Quote::factory()->create([
+            'product_id' => $otherProduct->id,
+            'conversation_id' => $lastMonthConversation->id,
+            'created_at' => $lastMonth,
+        ]);
+
+        $this->get('/admin')
+            ->assertOk()
+            ->assertSee('Atividade dos últimos 6 meses')
+            ->assertSee('Peças mais simuladas')
+            ->assertSee('Boto-cinza')
+            ->assertSee('2 simulações')
+            ->assertSee('data-month="'.$thisMonth->format('Y-m').'" data-quotes="2" data-conversations="1"', false)
+            ->assertSee('compras reais ainda não são registradas');
     }
 
     public function test_admin_can_review_conversation_history_and_consent_filter(): void
     {
         $this->actingAs(User::factory()->create());
-        $conversation = Conversation::factory()->create(['marketing_consent' => true]);
+        $conversation = Conversation::factory()->create([
+            'marketing_consent' => true,
+            'marketing_interests' => ['fauna_stories'],
+        ]);
         Message::query()->create([
             'conversation_id' => $conversation->id,
             'role' => 'user',
@@ -110,11 +149,13 @@ class AdminTest extends TestCase
 
         $this->get(route('admin.conversations.index', ['consent' => 'yes']))
             ->assertOk()
-            ->assertSee(substr($conversation->public_id, 0, 8));
+            ->assertSee(substr($conversation->public_id, 0, 8))
+            ->assertSee('Curiosidades sobre a fauna');
 
         $this->get(route('admin.conversations.show', $conversation))
             ->assertOk()
             ->assertSee('Gostaria de conhecer as peças.')
-            ->assertSee('aceita');
+            ->assertSee('registrada para demonstração')
+            ->assertSee('Curiosidades sobre a fauna');
     }
 }

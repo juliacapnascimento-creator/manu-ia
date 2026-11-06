@@ -30,6 +30,7 @@ class ChatTest extends TestCase
             'channel' => 'whatsapp',
             'message' => 'Qual é o preço do mico-leão-dourado?',
             'marketing_consent' => true,
+            'marketing_interests' => ['new_releases', 'gift_ideas'],
         ]);
 
         $response->assertOk()
@@ -42,13 +43,151 @@ class ChatTest extends TestCase
         $conversation = Conversation::query()->where('public_id', $conversationId)->firstOrFail();
         $this->assertSame('whatsapp', $conversation->channel);
         $this->assertTrue($conversation->marketing_consent);
+        $this->assertSame(['new_releases', 'gift_ideas'], $conversation->marketing_interests);
         $this->assertCount(2, $conversation->messages);
         Http::assertNothingSent();
 
         $this->getJson('/api/chat/'.$conversationId)
             ->assertOk()
             ->assertJsonCount(2, 'messages')
-            ->assertJsonPath('messages.0.channel', 'whatsapp');
+            ->assertJsonPath('messages.0.channel', 'whatsapp')
+            ->assertJsonPath('marketing_interests', ['new_releases', 'gift_ideas']);
+    }
+
+    public function test_agent_offers_a_product_specific_quote_action(): void
+    {
+        config(['services.openai.key' => null]);
+        $product = Product::factory()->create([
+            'name' => 'Tatu-galinha',
+            'slug' => 'tatu-galinha',
+            'species' => 'Dasypus novemcinctus',
+        ]);
+
+        $this->postJson('/api/chat', [
+            'conversation_id' => fake()->uuid(),
+            'channel' => 'site',
+            'message' => 'Quero simular um orçamento do tatu-galinha para presentear.',
+        ])->assertOk()
+            ->assertJsonPath('action.type', 'quote')
+            ->assertJsonPath('action.product_id', $product->id)
+            ->assertJsonPath('action.purpose', 'presentear');
+    }
+
+    public function test_agent_clarifies_the_customers_goal_before_recommending_a_piece(): void
+    {
+        config(['services.openai.key' => null]);
+        Product::factory()->create([
+            'name' => 'Boto-cinza',
+            'slug' => 'boto-cinza',
+            'species' => 'Sotalia guianensis',
+            'illustration' => 'boto-cinza',
+        ]);
+        Product::factory()->create([
+            'name' => 'Caranguejo-uçá',
+            'slug' => 'caranguejo-uca',
+            'species' => 'Ucides cordatus',
+            'illustration' => 'caranguejo-uca',
+        ]);
+        $conversationId = fake()->uuid();
+
+        $this->postJson('/api/chat', [
+            'conversation_id' => $conversationId,
+            'channel' => 'site',
+            'message' => 'Me ajuda a escolher uma peça.',
+        ])->assertOk()
+            ->assertJsonPath('message', fn (string $message): bool => str_contains($message, 'presentear, colecionar ou decorar'));
+
+        $this->postJson('/api/chat', [
+            'conversation_id' => $conversationId,
+            'channel' => 'site',
+            'message' => 'É para decorar.',
+        ])->assertOk()
+            ->assertJsonPath('message', fn (string $message): bool => str_contains($message, 'Caranguejo-uçá'));
+    }
+
+    public function test_agent_turns_a_repurchase_interest_into_a_demo_preference_action(): void
+    {
+        config(['services.openai.key' => null]);
+
+        $this->postJson('/api/chat', [
+            'conversation_id' => fake()->uuid(),
+            'channel' => 'site',
+            'message' => 'Quero simular receber novidades sobre novas peças.',
+        ])->assertOk()
+            ->assertJsonPath('action.type', 'retention')
+            ->assertJsonPath('action.interests', ['new_releases'])
+            ->assertJsonPath('message', fn (string $message): bool => str_contains($message, 'sem entrar em contato'));
+    }
+
+    public function test_agent_keeps_the_recommended_product_when_customer_requests_a_quote(): void
+    {
+        config(['services.openai.key' => null]);
+        $product = Product::factory()->create([
+            'name' => 'Boto-cinza',
+            'slug' => 'boto-cinza',
+            'species' => 'Sotalia guianensis',
+            'illustration' => 'boto-cinza',
+        ]);
+        Product::factory()->create([
+            'name' => 'Tatu-galinha',
+            'slug' => 'tatu-galinha',
+            'species' => 'Dasypus novemcinctus',
+            'illustration' => 'tatu-galinha',
+        ]);
+        $conversationId = fake()->uuid();
+
+        $this->postJson('/api/chat', [
+            'conversation_id' => $conversationId,
+            'channel' => 'site',
+            'message' => 'Me indica uma peça para colecionar.',
+        ])->assertOk()
+            ->assertJsonPath('message', fn (string $message): bool => str_contains($message, 'Boto-cinza'));
+
+        $this->postJson('/api/chat', [
+            'conversation_id' => $conversationId,
+            'channel' => 'site',
+            'message' => 'Quero simular um orçamento.',
+        ])->assertOk()
+            ->assertJsonPath('action.product_id', $product->id)
+            ->assertJsonPath('action.purpose', null);
+    }
+
+    public function test_disabling_demo_marketing_consent_clears_saved_interests(): void
+    {
+        config(['services.openai.key' => null]);
+        $conversation = Conversation::factory()->create([
+            'marketing_consent' => true,
+            'marketing_interests' => ['new_releases'],
+        ]);
+
+        $this->postJson('/api/chat', [
+            'conversation_id' => $conversation->public_id,
+            'channel' => 'site',
+            'message' => 'Quais peças tem no catálogo?',
+            'marketing_consent' => false,
+        ])->assertOk()
+            ->assertJsonPath('marketing_consent', false)
+            ->assertJsonPath('marketing_interests', []);
+
+        $this->assertDatabaseHas('conversations', [
+            'id' => $conversation->id,
+            'marketing_consent' => false,
+            'marketing_interests' => '[]',
+        ]);
+    }
+
+    public function test_chat_rejects_unknown_demo_marketing_interests(): void
+    {
+        $this->postJson('/api/chat', [
+            'conversation_id' => fake()->uuid(),
+            'channel' => 'site',
+            'message' => 'Olá',
+            'marketing_consent' => true,
+            'marketing_interests' => ['share_contact'],
+        ])->assertUnprocessable()
+            ->assertJsonValidationErrors(['marketing_interests.0']);
+
+        $this->assertDatabaseCount('conversations', 0);
     }
 
     public function test_chat_uses_openai_responses_api_when_configured(): void
@@ -150,7 +289,7 @@ class ChatTest extends TestCase
         $this->assertSame(6, Message::query()->whereHas('conversation', fn ($query) => $query->where('public_id', $conversationId))->count());
     }
 
-    public function test_homepage_uses_the_supplied_real_product_photo(): void
+    public function test_homepage_restores_the_original_storefront_design_with_agent_tools(): void
     {
         Product::factory()->create([
             'name' => 'Boto-cinza',
@@ -161,10 +300,13 @@ class ChatTest extends TestCase
 
         $this->get('/')
             ->assertOk()
-            ->assertSee('images/boto-cinza.jpg')
-            ->assertSee('Peça de biscuit real: Boto-cinza');
-
-        $this->assertFileExists(public_path('images/boto-cinza.jpg'));
+            ->assertSee('A natureza')
+            ->assertSee('CATÁLOGO DE DEMONSTRAÇÃO')
+            ->assertSee('Boto-cinza')
+            ->assertSee('WhatsApp simulado')
+            ->assertSee('Instagram simulado')
+            ->assertSee('rating-form')
+            ->assertSee('Mais do que responder.');
     }
 
     public function test_demo_chat_explains_when_a_requested_product_is_missing_from_the_catalog(): void
@@ -207,13 +349,16 @@ class ChatTest extends TestCase
             ->assertJsonPath('message', fn (string $message): bool => str_contains($message, 'Boto-cinza') && str_contains($message, 'valor') && str_contains($message, 'simular'));
     }
 
-    public function test_homepage_shows_a_clearly_marked_demo_rating(): void
+    public function test_homepage_explains_that_the_agent_is_a_simulation(): void
     {
         $this->get('/')
             ->assertOk()
-            ->assertSee('Como foi conversar com a Manu?')
-            ->assertSee('id="rating-form"', false)
-            ->assertSee('sua resposta não é enviada nem salva');
+            ->assertSee('Não é o site oficial da loja')
+            ->assertSee('Nenhuma compra ou mensagem real acontece aqui')
+            ->assertSee('sem contato real')
+            ->assertSee('WhatsApp simulado')
+            ->assertSee('Instagram simulado')
+            ->assertSee('sem mensagens para canais reais');
     }
 
     public function test_demo_chat_keeps_product_context_when_customer_asks_its_price(): void

@@ -25,6 +25,7 @@ Route::get('/api/chat/{conversation:public_id}', function (Conversation $convers
     return response()->json([
         'messages' => $conversation->messages()->oldest('id')->get(['role', 'channel', 'content']),
         'marketing_consent' => $conversation->marketing_consent,
+        'marketing_interests' => $conversation->marketing_interests ?? [],
     ]);
 })->middleware('throttle:60,1')->name('chat.history');
 Route::delete('/api/chat/{conversation:public_id}', function (Conversation $conversation) {

@@ -20,6 +20,8 @@ class ChatController extends Controller
             'channel' => ['required', Rule::in(['site', 'whatsapp', 'instagram'])],
             'message' => ['required', 'string', 'max:800'],
             'marketing_consent' => ['sometimes', 'boolean'],
+            'marketing_interests' => ['sometimes', 'array', 'max:3'],
+            'marketing_interests.*' => ['string', Rule::in(array_keys(Conversation::MARKETING_INTEREST_LABELS))],
         ]);
 
         $conversation = Conversation::query()->firstOrCreate(
@@ -31,6 +33,9 @@ class ChatController extends Controller
 
         if (array_key_exists('marketing_consent', $validated)) {
             $conversation->marketing_consent = $validated['marketing_consent'];
+            $conversation->marketing_interests = $validated['marketing_consent']
+                ? array_values(array_unique($validated['marketing_interests'] ?? []))
+                : [];
         }
 
         $conversation->last_message_at = now();
@@ -76,7 +81,9 @@ class ChatController extends Controller
             'conversation_id' => $conversation->public_id,
             'message' => $reply['content'],
             'mode' => $reply['mode'],
+            'action' => $reply['action'],
             'marketing_consent' => $conversation->marketing_consent,
+            'marketing_interests' => $conversation->marketing_interests ?? [],
         ]);
     }
 }

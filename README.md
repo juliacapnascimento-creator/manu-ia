@@ -59,13 +59,15 @@ Pré-requisitos instalados neste Mac: PHP 8.4, Composer 2.11, Node.js e MySQL 8.
 
 O navegador envia a mensagem para `POST /api/chat`. O controller valida o canal e o tamanho, salva as mensagens e a preferência de consentimento no Laravel, e chama `ChatAssistant`. O serviço lê os produtos ativos do banco e fornece esse catálogo como contexto para a API. O histórico é carregado em `GET /api/chat/{conversation}`; `DELETE` apaga a conversa demonstrativa. O identificador aleatório fica no `localStorage` do navegador e é compartilhado ao trocar de canal.
 
-O simulador envia produto, quantidade, personalização e data desejada para `POST /api/quotes`. O Laravel recalcula o total usando o valor exibido nas imagens e salva um registro `pending`. Como o material não informa preço de personalização, ela não entra no cálculo e deve ser consultada com a equipe. Cada orçamento guarda os valores usados no cálculo para preservar a simulação se o catálogo mudar.
+O agente ajuda a escolher uma peça e, quando a pessoa pede uma simulação, oferece um atalho que abre o simulador já com o produto e a finalidade identificados. O simulador envia produto, quantidade, personalização e data desejada para `POST /api/quotes`. O Laravel recalcula o total usando o valor exibido nas imagens e salva um registro `pending` ligado à conversa. Como o material não informa preço de personalização, ela não entra no cálculo e deve ser consultada com a equipe. Cada orçamento guarda os valores usados no cálculo para preservar a simulação se o catálogo mudar.
 
 A chave fica no servidor, em variável de ambiente. Não informe dados pessoais no chat: as mensagens ficam salvas localmente no protótipo e, quando a integração estiver ativa, o texto enviado será processado pela OpenAI.
 
 ## Painel administrativo e CRM demonstrativo
 
-O painel exige login e permite cadastrar, editar e arquivar produtos, consultar conversas e alterar a situação dos orçamentos. A página de conversas oferece filtro de consentimento e exibe o histórico e os orçamentos relacionados. O identificador é aleatório; não há ficha de cliente com dados pessoais nesta etapa. O consentimento começa desativado. Mesmo quando marcado, nenhuma campanha ou contato externo é iniciado.
+O painel exige login e permite cadastrar, editar e arquivar produtos, consultar conversas e alterar a situação dos orçamentos. A página de conversas oferece filtro de consentimento e exibe o histórico, os orçamentos relacionados e temas de interesse demonstrativos (novas peças, ideias para presentear e curiosidades sobre a fauna). O identificador é aleatório; não há ficha de cliente com dados pessoais nesta etapa. O consentimento começa desativado. Mesmo quando marcado, nenhuma campanha ou contato externo é iniciado; esses temas apenas ilustram como o agente poderia apoiar ações de recompra no futuro.
+
+A visão geral apresenta a evolução mensal das conversas e simulações dos últimos seis meses e as peças mais incluídas em orçamentos, usando apenas os registros existentes no protótipo. A situação “convertido” é uma marcação manual e não comprova uma compra; compras reais ainda não são registradas.
 
 ## Próximas etapas sugeridas
 
